@@ -1,5 +1,34 @@
 import jax
 import jax.numpy as jnp
+from functools import partial
+from simulation import simulate_pdu, measure_pdu, generate_y0
+
+###################
+#  Evaluate loss  #
+###################
+
+@partial(jax.jit, static_argnums=0)
+def objective(parameterized_loss_fn, params, data):
+    """
+    Objective function to minimize the loss between the model output and the target data.
+    
+    Args:
+        parameterized_loss_fn (function): parameterized loss function
+        params (array): parameters for the model
+        data (tuple): tuple containing experimental data
+            - t (array): time data
+            - x (array): experimental data
+            - data_ICs (array): initial conditions from data
+            - KO (str): knockout condition (default: None)
+
+    Returns:
+        float: computed loss value
+    """
+    t, x, data_ICs, KO = data
+    y0 = generate_y0(params, data_ICs)
+    sol = simulate_pdu(params, y0, t[0], t[-1], 1e-2, timepoints=t, KO=KO)
+    _, y_meas = measure_pdu(sol)
+    return parameterized_loss_fn(x, y_meas)
 
 ################################
 #  Construct loss via options  #
@@ -18,7 +47,7 @@ def parameterize_loss(x, t, loss_fn):
         function: parameterized loss function
     """
 
-    return jax.jit(loss_fn(x, t))
+    return loss_fn(x, t)
 
 def construct_loss(options):
     """
@@ -69,9 +98,9 @@ def construct_loss(options):
     # Eval return function
     return lambda x, t: loss_fn(weights(x), t_weights(t))
 
-#############################
-#  Helpers for making loss  #
-#############################
+###################################
+#  Helpers for constructing loss  #
+###################################
 
 def MSE(weights, t_weights):
     """
@@ -126,7 +155,7 @@ def max_relative_values(x):
     
     Args:
         x (array): input data
-        
+
     Returns:
         array: maximum relative values for each state variable
     """
