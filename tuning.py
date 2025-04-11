@@ -4,7 +4,7 @@ import warnings
 import jax.numpy as jnp
 from run_adam_tune import batch_run_adam
 
-warnings.filterwarnings("ignore", category=UserWarning, module="optuna")
+warnings.filterwarnings("ignore", module="optuna")
 
 def tune_adam_hyperparams(objective_fn, seeds, num_steps=500, num_trials=20):
     def optuna_objective(trial):
