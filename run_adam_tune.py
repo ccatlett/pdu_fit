@@ -1,7 +1,6 @@
 import jax
 import optax as opx
 
-@jax.jit
 def adam_step(params, opt_state, optimizer, objective_fn):
     loss, grads = jax.value_and_grad(objective_fn)(params)
     updates, opt_state = optimizer.update(grads, opt_state)

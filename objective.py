@@ -24,7 +24,7 @@ def objective(parameterized_loss_fn, params, x, t, dt, data_ICs, KO):
     Returns:
         float: computed loss value
     """
-    """t, x, data_ICs, KO = data"""
+
     y0 = generate_y0(params, data_ICs)
     sol = simulate_pdu(params, y0, t[0], t[-1], dt, timepoints=t, KO=KO)
     _, y_meas = measure_pdu(sol)
