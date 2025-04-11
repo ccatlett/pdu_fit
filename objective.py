@@ -1,34 +1,135 @@
+import jax
 import jax.numpy as jnp
 
-def compute_loss(measured_candidate, measured_data, options):
+################################
+#  Construct loss via options  #
+################################
 
-    match options["func"]:
+def parameterize_loss(x, t, loss_fn):
+    """
+    Parameterize the loss function with the given data to make weights
+    
+    Args:
+        x (array): input data
+        t (array): time data
+        loss_fn (function): loss function to parameterize
+
+    Returns:
+        function: parameterized loss function
+    """
+
+    return jax.jit(loss_fn(x, t))
+
+def construct_loss(options):
+    """
+    Construct the unparameterized loss function based on the provided options.
+
+    Args:
+        options (dict): dictionary containing the options for the loss function
+            - "loss_fn": type of loss function to use (e.g., "L2", "MSE")
+            - "t_weight": weighting in time (e.g., "inv_stepsize", "logarithmic", "linear")
+            - "weight": weighting by state (e.g., "variance", "range", "relative", "max_relative_scale")
+    
+    Returns:
+        function: loss function (not yet parameterized)
+    """
+    # Choose function type
+    match options["loss_fn"]:
         case "L2":
-            loss_func = lambda x, y: jnp.sum((x - y) ** 2)
-        case "LL":
-            loss_func = lambda x, y, alpha: ((x - y)**2) \
-              / (2 * alpha * jnp.abs(y)) + 0.5 * jnp.log(jnp.abs(y))
+            loss_fn = L2
         case "MSE":
-            loss_func = lambda x, y: jnp.mean((x - y) ** 2)
-            
+            loss_fn = MSE
+
+    # Choose weighting in time
     match options["t_weight"]:
         case "inv_stepsize":
-            t_weights = jnp.array([.5, .5, .5, .5, .5, .5, .5, .5, \
-                                 .5, .5, .5, .5, .5, 18.]) / (13./2. + 18.) # normalized
+            t_weights = inv_stepsize
         case "logarithmic":
-            t_weights = jnp.log(jnp.arange(1, len(measured_candidate) + 1)) + 1 \
-                / jnp.sum(jnp.log(jnp.arange(1, len(measured_candidate) + 1)) + 1)
-        case None:
-            t_weights = jnp.ones(len(measured_candidate))
-
+            t_weights = lambda t : jnp.log(jnp.linspace(1, t[-1], len(t))) + 1
+        case "logarithmic_stepsize":
+            t_weights = lambda t : jnp.log(t + 1) + 1
+        case "linear":
+            t_weights = lambda t : jnp.linspace(1, t[-1], len(t)) + 1
+        case _:
+            t_weights = lambda t : jnp.ones(len(t))
     
+    # Choose weighting by state
     match options["weight"]:
+        case "variance":
+            weights = lambda x : 1 / (jnp.var(x, axis=0) + 1e-6)
+        case "range":
+            weights = lambda x : 1 / (jnp.ptp(x, axis=0) + 1e-6)
         case "relative":
-            weights = 1 / (measured_candidate + 1e-6)
-        case "scaled":
-            pass # TODO
-        case ""
-        case None:
-            weights = jnp.ones(len(measured_candidate))
+            weights = lambda x : 1 / (jnp.mean(jnp.abs(x), axis=0) + 1e-6)
+        case "max_relative_scale":
+            weights = max_relative_values
+        case _:
+            weights = lambda x : jnp.ones(x.shape[1])
 
+    # Eval return function
+    return lambda x, t: loss_fn(weights(x), t_weights(t))
+
+#############################
+#  Helpers for making loss  #
+#############################
+
+def MSE(weights, t_weights):
+    """
+    Mean Squared Error (MSE) loss function with weights.
     
+    Args:
+        weights (array): weights for each state variable
+        t_weights (array): weights for each time point  
+        
+    Returns:
+        function: MSE loss function (fully parameterized)
+    """
+    # Normalize weights to sum to 1
+    weights = weights / jnp.sum(weights)
+    t_weights = t_weights / jnp.sum(t_weights)
+
+    return lambda x, y : jnp.sum(((x - y)**2 * weights) * t_weights[:, jnp.newaxis])
+
+def L2(weights, t_weights):
+    """
+    L2 loss function with weights.
+    
+    Args:
+        weights (array): weights for each state variable
+        t_weights (array): weights for each time point  
+        
+    Returns:
+        function: L2 loss function (fully parameterized)
+    """
+    # Normalize weights to sum to 1
+    weights = weights / jnp.sum(weights)
+    t_weights = t_weights / jnp.sum(t_weights)
+
+    return lambda x, y : MSE(weights, t_weights)(x, y) * (x.shape[0] * x.shape[1])
+
+def inv_stepsize(t):
+    """
+    Inverse step size weighting function for time data.
+    
+    Args:
+        t (array): time data
+
+    Returns:
+        array: inverse step size weights
+    """
+    first = t[1] - t[0]
+    return jnp.insert(jnp.diff(t), 0, first)
+
+def max_relative_values(x):
+    """
+    Calculate the maximum relative values for each state variable and make weights
+    
+    Args:
+        x (array): input data
+        
+    Returns:
+        array: maximum relative values for each state variable
+    """
+    max_vals = jnp.max(jnp.abs(x), axis=0)
+    max_overall = jnp.max(max_vals)
+    return max_overall / (max_vals + 1e-6)
