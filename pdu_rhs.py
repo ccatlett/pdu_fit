@@ -142,7 +142,6 @@ def e_perm(substrate_in, substrate_ext, k, vol_ratio):
 #  Full Pdu RHS f'n  #
 ######################
 
-@jax.jit
 def pdu_rhs(t, y, args):
     """
     Function to calculate the right-hand side of the Pdu reaction system.

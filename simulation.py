@@ -1,8 +1,10 @@
 import jax
 import jax.numpy as jnp
 import diffrax as dfx
-jax.config.update("jax_enable_x64", True)
+from functools import partial
 from pdu_rhs import pdu_rhs, V_EXT, V_INT
+
+jax.config.update("jax_enable_x64", True)
 
 ############################
 #  Construct IC from data  #
@@ -42,7 +44,7 @@ def generate_y0(params, data_ICs):
 #  Simulation & measurement  #
 ##############################
 
-@jax.jit
+@partial(jax.jit, static_argnums=(6))
 def simulate_pdu(params, y0, t0, t1, dt, timepoints=None, KO=None):
     """
     Simulate the reaction system using the provided parameters and initial conditions.

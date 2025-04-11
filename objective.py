@@ -7,8 +7,8 @@ from simulation import simulate_pdu, measure_pdu, generate_y0
 #  Evaluate loss  #
 ###################
 
-@partial(jax.jit, static_argnums=0)
-def objective(parameterized_loss_fn, params, data):
+@partial(jax.jit, static_argnums=(0,6))
+def objective(parameterized_loss_fn, params, x, t, dt, data_ICs, KO):
     """
     Objective function to minimize the loss between the model output and the target data.
     
@@ -24,9 +24,9 @@ def objective(parameterized_loss_fn, params, data):
     Returns:
         float: computed loss value
     """
-    t, x, data_ICs, KO = data
+    """t, x, data_ICs, KO = data"""
     y0 = generate_y0(params, data_ICs)
-    sol = simulate_pdu(params, y0, t[0], t[-1], 1e-2, timepoints=t, KO=KO)
+    sol = simulate_pdu(params, y0, t[0], t[-1], dt, timepoints=t, KO=KO)
     _, y_meas = measure_pdu(sol)
     return parameterized_loss_fn(x, y_meas)
 
